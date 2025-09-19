@@ -1,0 +1,55 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONPATH=/app
+      # Redshift Configuration
+      - REDSHIFT_CLUSTER=${REDSHIFT_CLUSTER}
+      - REDSHIFT_ENDPOINT=${REDSHIFT_ENDPOINT}
+      - REDSHIFT_PORT=${REDSHIFT_PORT}
+      - REDSHIFT_DB=${REDSHIFT_DB}
+      - REDSHIFT_USER=${REDSHIFT_USER}
+      - REDSHIFT_PASSWORD=${REDSHIFT_PASSWORD}
+      - REDSHIFT_ROLE_ARN=${REDSHIFT_ROLE_ARN}
+      # S3 Configuration
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - S3_PREFIX=${S3_PREFIX}
+      # Data Source Configuration
+      - DATA_SOURCE_TYPE=s3
+      - DATA_DIR=data
+      # AWS Configuration
+      - AWS_REGION=${AWS_REGION}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      # Alerting Configuration
+      - SNS_TOPIC_ARN=${SNS_TOPIC_ARN}
+    command: ["python", "main.py"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  streamlit-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8501:8501"
+    environment:
+      - API_BASE_URL=http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    command: ["streamlit", "run", "streamlit/app.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true", "--server.enableCORS=false", "--server.enableXsrfProtection=false"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

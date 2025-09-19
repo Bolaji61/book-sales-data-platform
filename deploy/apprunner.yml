@@ -1,0 +1,26 @@
+version: 1.0
+runtime: docker
+build:
+  commands:
+    build:
+      - echo "Building Book Sales Platform"
+      - docker build -t book-sales-api .
+      - docker build -t streamlit-dashboard ./streamlit
+run:
+  runtime-version: latest
+  command: docker-compose up
+  network:
+    port: 8000
+  env:
+    - name: DB_HOST
+      value: "your-rds-endpoint.amazonaws.com"
+    - name: DB_PORT
+      value: "5432"
+    - name: DB_NAME
+      value: "book_sales"
+    - name: DB_USER
+      value: "postgres"
+    - name: DB_PASSWORD
+      value: "your-secure-password"
+    - name: AWS_REGION
+      value: "us-east-2"
