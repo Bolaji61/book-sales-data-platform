@@ -1,5 +1,5 @@
 """
-Simplified Unified Data Processor for Book Sales Platform
+Simplified Unified Data Processor for Book Sales Platform - FIXED VERSION
 """
 
 import polars as pl
@@ -7,8 +7,7 @@ import boto3
 import os
 import time
 import logging
-from typing import List, Dict, Any, Optional
-from datetime import datetime
+from typing import List, Optional
 import io
 
 from logger import log_info, log_error
@@ -45,13 +44,13 @@ class DataProcessor:
     async def initialize(self):
         """Initialize and process all datasets"""
         try:
-            print("Initializing simplified data processor...")
+            log_info("Initializing simplified data processor...")
             
             await self._load_and_clean_data()
             
             await self._setup_redshift()
             
-            print("Simplified data processor initialized successfully!")
+            log_info("Simplified data processor initialized successfully!")
             
         except Exception as e:
             log_error(f"Failed to initialize data processor: {str(e)}")
@@ -59,14 +58,14 @@ class DataProcessor:
     
     async def _load_and_clean_data(self):
         """Load and clean data in one step"""
-        print("Loading and cleaning data...")
+        log_info("Loading and cleaning data...")
         
         # Load raw data
         self.users_df = pl.read_csv("data/users.csv")
         self.transactions_df = pl.read_csv("data/transactions.csv")
         self.books_df = pl.read_csv("data/books.csv")
         
-        print(f"Loaded {len(self.users_df)} users, {len(self.transactions_df)} transactions, {len(self.books_df)} books")
+        log_info(f"Loaded {len(self.users_df)} users, {len(self.transactions_df)} transactions, {len(self.books_df)} books")
         
         # Clean data
         self.users_df = self._clean_users(self.users_df)
@@ -84,10 +83,10 @@ class DataProcessor:
         
         removed_count = original_count - len(self.transactions_df)
         if removed_count > 0:
-            print(f"Removed {removed_count} invalid transactions")
+            log_info(f"Removed {removed_count} invalid transactions")
         
-        print(f"Final transaction count: {len(self.transactions_df)}")
-        print("Data cleaning completed!")
+        log_info(f"Final transaction count: {len(self.transactions_df)}")
+        log_info("Data cleaning completed!")
     
     def _clean_users(self, df: pl.DataFrame) -> pl.DataFrame:
         """Clean users data"""
@@ -128,14 +127,14 @@ class DataProcessor:
 
     async def _setup_redshift(self):
         """Setup Redshift schema and load data"""
-        print("Setting up Redshift...")
+        log_info("Setting up Redshift...")
         
         try:
             await self._create_schema()
             
             await self._upload_and_load_data()
             
-            print("Redshift setup completed!")
+            log_info("Redshift setup completed!")
             
         except Exception as e:
             logger.error(f"Failed to setup Redshift: {e}")
@@ -219,10 +218,13 @@ class DataProcessor:
 
     async def _upload_and_load_data(self):
         """Upload data to S3 and load into Redshift"""
-        print("Uploading and loading data...")
+        log_info("Uploading and loading data...")
         
         # Prepare dataframes for COPY
-        users_df_copy = self.users_df.rename({"id": "user_id"}).select([
+        users_df_copy = self.users_df.rename({"id": "user_id"}).with_columns([
+            # Format signup_date to match 'YYYY-MM-DD'
+            pl.col("signup_date").dt.strftime("%Y-%m-%d").alias("signup_date")
+        ]).select([
             pl.col("user_id"), pl.col("name"), pl.col("email"), 
             pl.col("location"), pl.col("signup_date"), 
             pl.lit(None).cast(pl.Utf8).alias("social_security_number")
@@ -240,59 +242,121 @@ class DataProcessor:
             pl.lit(0.0).cast(pl.Float64).alias("discount_amount"),
             (pl.col("timestamp").dt.year() * 10000 + 
              pl.col("timestamp").dt.month() * 100 + 
-             pl.col("timestamp").dt.day()).cast(pl.Int64).alias("date_id")
-        ]).rename({"timestamp": "transaction_timestamp"}).select([
+             pl.col("timestamp").dt.day()).cast(pl.Int64).alias("date_id"),
+            # Format timestamp to match 'YYYY-MM-DD HH24:MI:SS'
+            pl.col("timestamp").dt.strftime("%Y-%m-%d %H:%M:%S").alias("transaction_timestamp")
+        ]).select([
             pl.col("transaction_id"), pl.col("user_id"), pl.col("book_id"),
             pl.col("date_id"), pl.col("amount"), pl.col("quantity"),
             pl.col("discount_amount"), pl.col("transaction_timestamp")
         ])
         
         # Upload to S3
-        await self._upload_csv_to_s3(users_df_copy, "data/users.csv")
-        await self._upload_csv_to_s3(books_df_copy, "data/books.csv")
-        await self._upload_csv_to_s3(transactions_df_copy, "data/transactions.csv")
+        await self._upload_csv_to_s3(users_df_copy, "processed/users.csv")
+        await self._upload_csv_to_s3(books_df_copy, "processed/books.csv") 
+        await self._upload_csv_to_s3(transactions_df_copy, "processed/transactions.csv")
         
-        # COPY to Redshift
         await self._copy_to_redshift()
         
         logger.info("Data loaded successfully!")
 
     async def _upload_csv_to_s3(self, df: pl.DataFrame, s3_key: str):
         """Upload DataFrame as CSV to S3"""
-        buffer = io.BytesIO()
-        df.write_csv(buffer)
-        csv_data = buffer.getvalue().decode('utf-8')
-        
-        self.s3_client.put_object(
-            Bucket=self.s3_bucket,
-            Key=s3_key,
-            Body=csv_data,
-            ContentType='text/csv'
-        )
-        logger.info(f"Uploaded {s3_key} to S3")
+        try:
+            # FIXED: Add null value handling and proper CSV formatting
+            buffer = io.BytesIO()
+            
+            # Replace None/null values with empty strings for better CSV compatibility
+            df_clean = df.fill_null("")
+            
+            df_clean.write_csv(
+                buffer,
+                separator=',',
+                include_header=True,
+                null_value='',
+                quote_style='necessary'
+            )
+            
+            csv_data = buffer.getvalue()
+            
+            self.s3_client.put_object(
+                Bucket=self.s3_bucket,
+                Key=s3_key,
+                Body=csv_data,
+                ContentType='text/csv'
+            )
+            logger.info(f"Uploaded {s3_key} to S3 ({len(csv_data)} bytes)")
+            
+        except Exception as e:
+            logger.error(f"Failed to upload {s3_key} to S3: {e}")
+            raise
 
     async def _copy_to_redshift(self):
         """Copy data from S3 to Redshift"""
         copy_commands = [
-            f"""COPY dim_users (user_id, name, email, location, signup_date, social_security_number)
-               FROM 's3://{self.s3_bucket}/processed/users.csv'
-               IAM_ROLE '{self.redshift_role_arn}' CSV IGNOREHEADER 1 DELIMITER ','""",
+            # Load dim_users first (no dependencies)
+            {
+                'name': 'dim_users',
+                'sql': f"""COPY dim_users (user_id, name, email, location, signup_date, social_security_number)
+                   FROM 's3://{self.s3_bucket}/processed/users.csv'
+                   IAM_ROLE '{self.redshift_role_arn}' 
+                   CSV IGNOREHEADER 1 
+                   DELIMITER ',' 
+                   NULL AS ''
+                   ACCEPTINVCHARS
+                   TRUNCATECOLUMNS"""
+            },
             
-            f"""COPY dim_books (book_id, title, author, category, publication_year, pages, base_price)
-               FROM 's3://{self.s3_bucket}/processed/books.csv'
-               IAM_ROLE '{self.redshift_role_arn}' CSV IGNOREHEADER 1 DELIMITER ','""",
+            # Load dim_books second
+            {
+                'name': 'dim_books',
+                'sql': f"""COPY dim_books (book_id, title, author, category, publication_year, pages, base_price)
+                   FROM 's3://{self.s3_bucket}/processed/books.csv'
+                   IAM_ROLE '{self.redshift_role_arn}' 
+                   CSV IGNOREHEADER 1 
+                   DELIMITER ',' 
+                   NULL AS ''
+                   ACCEPTINVCHARS
+                   TRUNCATECOLUMNS"""
+            },
             
-            f"""COPY fact_sales (transaction_id, user_id, book_id, date_id, amount, quantity, discount_amount, transaction_timestamp)
-               FROM 's3://{self.s3_bucket}/processed/transactions.csv'
-               IAM_ROLE '{self.redshift_role_arn}' CSV IGNOREHEADER 1 DELIMITER ','"""
+            # Load fact_sales last (depends on dim_users and dim_books)
+            {
+                'name': 'fact_sales',
+                'sql': f"""COPY fact_sales (transaction_id, user_id, book_id, date_id, amount, quantity, discount_amount, transaction_timestamp)
+                   FROM 's3://{self.s3_bucket}/processed/transactions.csv'
+                   IAM_ROLE '{self.redshift_role_arn}' 
+                   CSV IGNOREHEADER 1 
+                   DELIMITER ',' 
+                   NULL AS ''
+                   ACCEPTINVCHARS
+                   TRUNCATECOLUMNS
+                   TIMEFORMAT 'YYYY-MM-DD HH24:MI:SS'"""
+            }
         ]
         
-        for cmd in copy_commands:
-            await self._execute_query(cmd)
+        for cmd_info in copy_commands:
+            try:
+                logger.info(f"Loading data into {cmd_info['name']}...")
+                await self._execute_query(cmd_info['sql'])
+                logger.info(f"Successfully loaded {cmd_info['name']}")
+                
+            except Exception as e:
+                logger.error(f"Failed to load {cmd_info['name']}: {e}")
+                
+                # Query stl_load_errors for detailed error info
+                try:
+                    await self._debug_load_errors(cmd_info['name'])
+                except:
+                    pass
+                    
+                raise
 
     async def _execute_query(self, query: str):
         """Execute SQL query on Redshift"""
         try:
+            logger.info(f"Executing query: {query[:100]}...")
+            
             response = self.redshift_client.execute_statement(
                 ClusterIdentifier=self.redshift_cluster,
                 Database=self.redshift_db,
@@ -301,21 +365,34 @@ class DataProcessor:
             )
             
             query_id = response['Id']
-            while True:
+            logger.info(f"Query submitted with ID: {query_id}")
+            
+            max_wait_time = 300  # 5 minutes
+            elapsed_time = 0
+            
+            while elapsed_time < max_wait_time:
                 result = self.redshift_client.describe_statement(Id=query_id)
                 status = result['Status']
+                
                 if status in ['FINISHED', 'FAILED', 'ABORTED']:
                     break
+                    
                 time.sleep(2)
+                elapsed_time += 2
+            
+            if elapsed_time >= max_wait_time:
+                raise Exception(f"Query timeout after {max_wait_time} seconds")
             
             if status != 'FINISHED':
                 error_msg = result.get('Error', 'Unknown error')
+                logger.error(f"Query failed with status {status}: {error_msg}")
                 raise Exception(f"Query failed: {error_msg}")
+            
+            logger.info(f"Query completed successfully in {elapsed_time} seconds")
                 
         except Exception as e:
             logger.error(f"Failed to execute query: {e}")
             raise
-
 
     async def get_daily_sales_summary(self, days: int = 30) -> List[DailySalesSummary]:
         """Get daily sales summary"""
