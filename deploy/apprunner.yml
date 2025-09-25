@@ -5,6 +5,16 @@ build:
     build:
       - echo "Installing Python dependencies"
       - pip3 install -r requirements.txt
+      - echo "DEBUG: Checking Python and pip"
+      - which python || echo "python not found"
+      - which python3 || echo "python3 not found"
+      - python3 --version
+      - which pip || echo "pip not found"
+      - which pip3 || echo "pip3 not found"
+      - pip3 --version
+      - ls -lah /usr/local/bin | grep pip || echo "no pip binaries in /usr/local/bin"
+      - pip3 install --upgrade pip
+      - pip3 install -r requirements.txt
 run:
   runtime-version: 3.11
   command: python3 main.py
