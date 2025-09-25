@@ -64,7 +64,9 @@ class RedshiftAnalyticsService:
 
         return await self._execute_query(query, "daily_sales_trends")
 
-    async def get_daily_sales_trends_by_date_range(self, start_date: str, end_date: str) -> Dict[str, Any]:
+    async def get_daily_sales_trends_by_date_range(
+        self, start_date: str, end_date: str
+    ) -> Dict[str, Any]:
         """Get daily sales trends for a specific date range"""
         query = f"""
         SELECT 
@@ -343,9 +345,9 @@ class RedshiftAnalyticsService:
                 GROUP BY d.full_date
                 ORDER BY d.full_date DESC
                 LIMIT 10
-            """
+            """,
         }
-        
+
         results = {}
         for name, query in queries.items():
             try:
@@ -353,5 +355,5 @@ class RedshiftAnalyticsService:
                 results[name] = result
             except Exception as e:
                 results[name] = {"error": str(e)}
-        
+
         return results

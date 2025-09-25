@@ -15,17 +15,13 @@ services:
       - REDSHIFT_USER=${REDSHIFT_USER}
       - REDSHIFT_PASSWORD=${REDSHIFT_PASSWORD}
       - REDSHIFT_ROLE_ARN=${REDSHIFT_ROLE_ARN}
-      # S3 Configuration
       - S3_BUCKET_NAME=${S3_BUCKET_NAME}
       - S3_PREFIX=${S3_PREFIX}
-      # Data Source Configuration
       - DATA_SOURCE_TYPE=s3
       - DATA_DIR=data
-      # AWS Configuration
       - AWS_REGION=${AWS_REGION}
       - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
       - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
-      # Alerting Configuration
       - SNS_TOPIC_ARN=${SNS_TOPIC_ARN}
     command: ["python", "main.py"]
     restart: unless-stopped
@@ -38,7 +34,7 @@ services:
   streamlit-dashboard:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: streamlit/Dockerfile
     ports:
       - "8501:8501"
     environment:

@@ -13,14 +13,14 @@ run:
     port: 8000
   env:
     - name: DB_HOST
-      value: "your-rds-endpoint.amazonaws.com"
+      value: ${REDSHIFT_ENDPOINT}
     - name: DB_PORT
-      value: "5432"
+      value: ${REDSHIFT_PORT}
     - name: DB_NAME
-      value: "book_sales"
+      value: ${REDSHIFT_DB}
     - name: DB_USER
-      value: "postgres"
+      value: ${REDSHIFT_USER}
     - name: DB_PASSWORD
-      value: "your-secure-password"
+      value: ${REDSHIFT_PASSWORD}
     - name: AWS_REGION
-      value: "us-east-2"
+      value: ${AWS_REGION}

@@ -1,146 +1,162 @@
 # Book Sales Analytics Platform
 
-A data analytics platform for book sales data using FastAPI, Amazon Redshift, and AWS services.
+A simple analytics dashboard for book sales data. Shows daily revenue trends, top-selling books, and customer insights.
 
-## Architecture & Design Decisions
+## What This Project Does
 
-### Data Flow
-1. **CSV Files** → **S3 Storage** → **Redshift Data Warehouse** → **FastAPI** → **Analytics Dashboard**
+- Loads book sales data into Amazon Redshift
+- Provides a REST API for analytics queries
+- Shows interactive charts and metrics in a web dashboard
+- Tracks daily sales, popular books, and customer behavior
 
-### Key Design Decisions
+## Quick Start
 
-**Redshift:**
-- Handles large datasets efficiently with columnar storage
-- Built-in analytics functions and materialized views
-- Integrates well with S3 for data loading
+### Option 1: Docker (Recommended)
 
-**Star Schema:**
-- Simple to understand and query
-- Optimized for analytics workloads
-- Easy to add new dimensions
+1. **Setup environment:**
+   ```bash
+   cp env.example .env
+   # Edit .env with your AWS credentials
+   ```
 
-**Materialized Views:**
-- Pre-computed aggregations for faster queries
-- Automatically refreshed when data changes
-- Reduces load on fact tables
+2. **Start everything:**
+   ```bash
+   docker-compose up --build
+   ```
 
-**FastAPI:**
-- Fast and modern Python web framework
-- Built-in API documentation
-- Easy to extend with new endpoints
+3. **Access the dashboard:**
+   - API: http://localhost:8000
+   - Dashboard: http://localhost:8501
+   - API docs: http://localhost:8000/docs
 
-## How to Run the Pipeline and API
+### Option 2: Manual Setup
 
-### Prerequisites
-- Python 3.9+
-- AWS CLI configured
-- Docker
+1. **Install Python dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-### Docker Setup
+2. **Configure environment:**
+   ```bash
+   cp env.example .env
+   # Add your AWS and Redshift details
+   ```
 
-```bash
-cp env.example .env  # Edit .env with AWS and Redshift credentials 
-docker-compose up --build
-```
+3. **Upload data to S3:**
+   ```bash
+   python etl/upload_data_to_s3.py your-s3-bucket-name
+   ```
 
-### Alternative Setup
+4. **Setup Redshift:**
+   ```bash
+   ./deploy/redshift-setup.sh
+   ```
 
-1. **Install Dependencies**
-```bash
-pip install -r requirements.txt
-```
+5. **Run the API:**
+   ```bash
+   python main.py
+   ```
 
-2. **Configure Environment**
-```bash
-cp env.example .env
-# Edit .env with AWS and Redshift credentials 
-```
+6. **Run the dashboard:**
+   ```bash
+   cd streamlit
+   streamlit run app.py
+   ```
 
-3. **Upload Data to S3 (One-time setup)**
-```bash
-python3 scripts/upload_data_to_s3.py s3-bucket-name
-```
+## What You Need
 
-4. **Deploy Redshift Infrastructure**
-```bash
-./deploy/redshift-setup.sh
-```
+- Python 3.9 or newer
+- AWS account with S3 and Redshift access
+- Docker (optional, but easier)
 
-5. **Run the API**
-```bash
-python main.py
-```
+## Data Files
 
-The API will be available at `http://localhost:8000`
+The platform uses three CSV files:
+- `data/users.csv` - Customer information
+- `data/books.csv` - Book catalog with prices
+- `data/transactions.csv` - Purchase records
 
-### API Endpoints
+## API Endpoints
 
-- `GET /health` - Health check
-- `GET /analytics/daily-sales` - Daily sales summary
-- `GET /analytics/top-books` - Top performing books
-- `GET /analytics/user-behavior` - User analytics
-- `GET /docs` - API documentation
+- `GET /health` - Check if everything is working
+- `GET /api/sales/daily` - Daily sales totals
+- `GET /api/books/top` - Top 5 books by revenue
+- `GET /api/users/{user_id}/purchase-history` - User's buying history
+- `GET /api/analytics/revenue-trend` - Revenue trends over time
+- `GET /api/analytics/active-users` - User activity over time
+- `GET /api/analytics/category-performance` - Sales by book category
+- `GET /api/analytics/customer-segments` - Customer groups (high-value, etc.)
 
+## Dashboard Features
 
-## Monitoring Setup
-
-### Logging
-
-- **Console Logging**: All operations logged to console with timestamps
-- **Log Levels**: INFO, SUCCESS, WARNING, ERROR
-
-## How to Access Analytics/Dashboard
-
-### Streamlit Dashboard
-This data platform includes a Streamlit dashboard for interactive analytics:
-
-1. **Run Dashboard**
-```bash
-cd streamlit
-streamlit run app.py
-```
-
-2. **Access Dashboard**
-Open `http://localhost:8501` in your browser
-
-### Dashboard Features
-- **Sales Overview**: Daily sales trends and metrics
-- **Top Books**: Best performing books by revenue
-- **User Analytics**: Customer behavior and segments
-- **Data Quality**: Data validation and cleaning results
-
-### API Documentation
-- **Swagger UI**: `http://localhost:8000/docs`
-- **ReDoc**: `http://localhost:8000/redoc`
-
-## Data Structure
-
-### Input Data
-- `users.csv` - User profiles (ID, name, email, location, signup date)
-- `books.csv` - Book catalog (ID, title, author, category, price, ISBN)
-- `transactions.csv` - Purchase records (transaction ID, user ID, book ID, amount, timestamp)
-
-### Database Schema
-- **dim_users** - User dimension table
-- **dim_books** - Book dimension table  
-- **fact_sales** - Sales fact table
-- **Materialized Views** - Pre-aggregated analytics tables
-
-## Environment Variables
-See `env.example` file
-
+The Streamlit dashboard shows:
+- **Revenue Trends** - Daily sales with date range picker
+- **Top Books** - Best sellers by revenue
+- **User Analytics** - Customer segments and behavior
+- **Category Analysis** - Performance by book category
+- **System Status** - Health check for API and database
 
 ## Project Structure
 
 ```
-├── api/                    # FastAPI endpoints and services
-├── etl/                    # Core Extract, Transform, Load logic
-├── database/               # Database connections and queries
-├── deploy/                 # Deployment scripts
-├── scripts/                # Utility scripts
-├── streamlit/              # Dashboard application
-├── tests/                  # Test files
-├── main.py                 # Application entry point
-├── logger.py               # Monitoring configuration
-└── requirements.txt        # Python dependencies
+├── api/                    # FastAPI backend
+│   ├── endpoints.py        # API route handlers
+│   ├── models.py          # Data models
+│   ├── redshift_service.py # Database queries
+│   └── services.py        # Business logic
+├── etl/                   # Data processing
+│   ├── data_processor.py  # Main ETL pipeline
+│   └── upload_data_to_s3.py # S3 upload utility
+├── database/              # Database setup
+│   ├── init_db.py         # Create tables
+│   ├── schema.sql         # Table definitions
+│   └── queries.py         # Common queries
+├── streamlit/             # Web dashboard
+│   └── app.py            # Dashboard app
+├── deploy/                # Deployment scripts
+├── main.py               # API entry point
+└── requirements.txt      # Python packages
 ```
+
+## Environment Variables
+
+Copy `env.example` to `.env` and fill in:
+
+- `AWS_ACCESS_KEY_ID` - Your AWS access key
+- `AWS_SECRET_ACCESS_KEY` - Your AWS secret key
+- `AWS_REGION` - AWS region (e.g., us-east-1)
+- `REDSHIFT_CLUSTER_ID` - Your Redshift cluster name
+- `REDSHIFT_DATABASE` - Database name
+- `REDSHIFT_USER` - Database username
+- `REDSHIFT_PASSWORD` - Database password
+- `S3_BUCKET` - S3 bucket for data files
+
+## Troubleshooting
+
+**Dashboard shows "unhealthy" status:**
+- Check your `.env` file has correct credentials
+- Make sure Redshift cluster is running
+- Verify S3 bucket exists and is accessible
+
+**Empty charts or "no data" errors:**
+- Run the ETL process to load data into Redshift
+- Check that CSV files exist in the `data/` folder
+- Verify data was uploaded to S3 successfully
+
+**API endpoints return errors:**
+- Check Redshift connection in the logs
+- Ensure all required environment variables are set
+- Verify the database tables were created properly
+
+## Development
+
+## Project Structure
+
+**Adding new endpoints:** 
+1. Add the method to `api/redshift_service.py`
+2. Add the route to `main.py`
+3. Update the dashboard in `streamlit/app.py` if needed
+
+**Modifying the dashboard:**
+- Edit `streamlit/app.py`
+- The dashboard will reload automatically with Docker

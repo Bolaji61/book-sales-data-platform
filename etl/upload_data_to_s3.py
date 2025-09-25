@@ -16,7 +16,6 @@ def upload_data_to_s3(bucket_name: str, data_dir: str = "data", prefix: str = "d
 
     s3_client = boto3.client("s3")
 
-    # files to upload with their S3 keys
     files_to_upload = {
         "users.csv": f"{prefix}/users.csv",
         "transactions.csv": f"{prefix}/transactions.csv",
@@ -34,7 +33,7 @@ def upload_data_to_s3(bucket_name: str, data_dir: str = "data", prefix: str = "d
             continue
 
         try:
-            # Check if file already exists in S3
+            # check if file already exists in S3
             try:
                 s3_client.head_object(Bucket=bucket_name, Key=s3_key)
                 log_warning(f"File already exists in S3: {s3_key}", logger)
@@ -43,7 +42,7 @@ def upload_data_to_s3(bucket_name: str, data_dir: str = "data", prefix: str = "d
                     log_info(f"Skipping: {filename}", logger)
                     continue
             except s3_client.exceptions.NoSuchKey:
-                pass  # File doesn't exist, proceed with upload
+                pass  # file doesn't exist, proceed with upload
 
             # upload file
             s3_client.upload_file(str(local_path), bucket_name, s3_key)

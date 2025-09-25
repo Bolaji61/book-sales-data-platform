@@ -1,46 +1,12 @@
-# Python
 __pycache__/
-*.py[cod]
-*.pyc
-.Python
-
-# Virtual environments
 .env
 .venv
 venv/
 env/
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
 .DS_Store
 Thumbs.db
-
-# Logs
 *.log
-
-# Environment files
-.env.local
-.env.production
-.env.staging
-
-# AWS credentials
 .aws/
-
-# Test coverage
-.coverage
-htmlcov/
-.pytest_cache/
-
-# Temporary files
-*.tmp
-*.temp
 
 # Data files
 data/*.csv
-data/processed/
-data/raw/

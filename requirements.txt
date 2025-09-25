@@ -7,10 +7,8 @@ python-dateutil==2.8.2
 boto3==1.34.0
 botocore==1.34.0
 requests==2.31.0
-# Redshift dependencies
 redshift-connector==2.0.909
 sqlalchemy-redshift==0.8.0
-# Streamlit dashboard dependencies
 streamlit==1.28.1
 plotly==5.17.0
 pandas==2.1.4

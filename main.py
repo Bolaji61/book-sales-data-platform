@@ -1,85 +1,35 @@
 """
-Book Sales Analytics Platform - Main Application
+Book Sales Data Platform - Clean API
+Simplified API with only essential endpoints for task completion
 """
 
 import os
+import logging
 import time
-from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import Dict
 
-from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from api.models import HealthResponse
 from api.redshift_service import RedshiftAnalyticsService
-from database.redshift_connection import close_redshift, get_redshift_manager
-from etl.data_processor import DataProcessor
-from logger import get_logger, log_error, log_info, log_start, log_success
-from models import HealthResponse
+from database.redshift_connection import get_redshift_manager
 
-load_dotenv()
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-redshift_manager = None
-data_processor = None
-redshift_analytics_service = None
-logger = get_logger("main")
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Application lifespan manager"""
-    global redshift_manager, data_processor, redshift_analytics_service
-
-    try:
-        log_start("Starting Book Sales Platform", logger)
-
-        redshift_manager = await get_redshift_manager()
-        log_success("Redshift connection established", logger)
-
-        data_processor = DataProcessor()
-        await data_processor.initialize()
-        log_success("ETL: cleaned local CSVs", logger)
-
-        redshift_analytics_service = RedshiftAnalyticsService(
-            cluster_identifier=os.getenv(
-                "REDSHIFT_CLUSTER", "book-sales-platform-redshift"
-            ),
-            database=os.getenv("REDSHIFT_DB", "book_sales"),
-            db_user=os.getenv("REDSHIFT_USER", "admin"),
-            db_password=os.getenv("REDSHIFT_PASSWORD", ""),
-            port=int(os.getenv("REDSHIFT_PORT", "5439")),
-            region=os.getenv("AWS_REGION", "us-east-2"),
-        )
-        log_success("Analytics service initialized", logger)
-
-        log_success("Book Sales Platform is ready!", logger)
-
-    except Exception as e:
-        log_error(f"Failed to initialize application: {e}", logger)
-        raise
-
-    yield
-
-    try:
-        log_info("Shutting down Book Sales Platform...", logger)
-
-        if redshift_manager:
-            await close_redshift()
-            log_success("Redshift connection closed", logger)
-
-        log_success("Shutdown complete", logger)
-
-    except Exception as e:
-        log_error(f"Error during shutdown: {e}", logger)
-
-
+# Initialize FastAPI app
 app = FastAPI(
-    title="Book Sales Platform",
-    description="Analytics platform for book sales data using Amazon Redshift",
-    version="2.0.0",
-    lifespan=lifespan,
+    title="Book Sales Data Platform API",
+    description="Clean API for book sales analytics",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -88,13 +38,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Simple monitoring - no complex middleware needed for take-home assignment
+# Global variables for services
+redshift_manager = None
+redshift_analytics_service = None
 
 
-async def get_redshift():
-    if redshift_manager is None:
-        raise HTTPException(status_code=503, detail="Redshift not available")
-    return redshift_manager
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on startup"""
+    global redshift_manager, redshift_analytics_service
+
+    try:
+        logger.info("Starting Book Sales Data Platform...")
+
+        # Initialize Redshift connection
+        redshift_manager = await get_redshift_manager()
+        await redshift_manager.initialize()
+
+        # Initialize analytics service
+        redshift_analytics_service = RedshiftAnalyticsService(
+            cluster_identifier=os.getenv("REDSHIFT_CLUSTER"),
+            database=os.getenv("REDSHIFT_DB"),
+            db_user=os.getenv("REDSHIFT_USER"),
+            db_password=os.getenv("REDSHIFT_PASSWORD"),
+            region=os.getenv("AWS_REGION"),
+        )
+
+        logger.info("All services initialized successfully!")
+
+    except Exception as e:
+        logger.error(f"Failed to initialize services: {e}")
+        raise
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup on shutdown"""
+    global redshift_manager
+
+    if redshift_manager:
+        await redshift_manager.close()
+
+    logger.info("Services shutdown complete")
 
 
 async def get_analytics_service():
@@ -103,6 +88,12 @@ async def get_analytics_service():
     return redshift_analytics_service
 
 
+# Index endpoint
+@app.get("/")
+async def index():
+    return {"message": "Book Sales Data Platform API"}
+
+# Health check endpoint
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint"""
@@ -113,7 +104,9 @@ async def health_check():
         try:
             # Use analytics service for health check
             analytics_service = await get_analytics_service()
-            result = await analytics_service._execute_query("SELECT 1 as test", "health_check")
+            result = await analytics_service._execute_query(
+                "SELECT 1 as test", "health_check"
+            )
             if not result or not result.get("data"):
                 redshift_status = "unhealthy: No data returned"
         except Exception as e:
@@ -122,7 +115,7 @@ async def health_check():
         return HealthResponse(
             status="healthy" if redshift_status == "healthy" else "unhealthy",
             timestamp=datetime.now(),
-            version="2.0.0",
+            version="1.0.0",
             database_status=redshift_status,
             uptime_seconds=time.time() - start_time,
         )
@@ -130,147 +123,56 @@ async def health_check():
         return HealthResponse(
             status="unhealthy",
             timestamp=datetime.now(),
-            version="2.0.0",
+            version="1.0.0",
             database_status=f"error: {str(e)}",
             uptime_seconds=time.time() - start_time,
         )
 
 
-@app.get("/analytics/daily-sales-trends")
-async def get_daily_sales_trends(
-    days: int = 30,
-    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
-):
-    try:
-        return await analytics_service.get_daily_sales_trends(days)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get daily sales trends: {str(e)}"
-        )
-
-
-@app.get("/analytics/top-books")
-async def get_top_books(
-    limit: int = 10,
-    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
-):
-    try:
-        return await analytics_service.get_top_books(limit)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get top books: {str(e)}"
-        )
-
-
-@app.get("/analytics/user-analytics")
-async def get_user_analytics(
-    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
-):
-    try:
-        return await analytics_service.get_user_analytics()
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get user analytics: {str(e)}"
-        )
-
-
-@app.get("/debug/data-status")
-async def debug_data_status(
-    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
-):
-    """Debug endpoint to check data status in Redshift tables"""
-    try:
-        return await analytics_service.debug_data_status()
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get debug data: {str(e)}"
-        )
-
-
-@app.get("/analytics/daily-sales-trends-range")
-async def get_daily_sales_trends_by_range(
-    start_date: str,
-    end_date: str,
-    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
-):
-    """Get daily sales trends for a specific date range (format: YYYY-MM-DD)"""
-    try:
-        return await analytics_service.get_daily_sales_trends_by_date_range(start_date, end_date)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get daily sales trends: {str(e)}"
-        )
-
-
-@app.get("/analytics/category-performance")
-async def get_category_performance(
-    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
-):
-    try:
-        return await analytics_service.get_category_performance()
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get category performance: {str(e)}"
-        )
-
-
-@app.get("/analytics/customer-segments")
-async def get_customer_segments(
-    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
-):
-    try:
-        return await analytics_service.get_customer_segments()
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get customer segments: {str(e)}"
-        )
-
-
-@app.get("/analytics/monthly-trends")
-async def get_monthly_trends(
-    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
-):
-    try:
-        return await analytics_service.get_monthly_trends()
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get monthly trends: {str(e)}"
-        )
-
-
-@app.get("/analytics/sales-summary")
-async def get_sales_summary_endpoint(
-    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
-):
-    try:
-        return await analytics_service.get_sales_summary()
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get sales summary: {str(e)}"
-        )
-
-
-@app.get("/api/v1/sales/daily")
-async def get_daily_sales_v1(
-    limit: int = 100,
+# Daily sales endpoint
+@app.get("/api/sales/daily")
+async def get_daily_sales(
     start_date: str = None,
     end_date: str = None,
     analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
 ):
+    """
+    Get daily sales data - Required for 'Fetching total sales per day'
+
+    Args:
+        start_date: Start date in YYYY-MM-DD format (optional)
+        end_date: End date in YYYY-MM-DD format (optional)
+
+    Returns:
+        Daily sales data with revenue, transactions, and user counts
+    """
     try:
-        return await analytics_service.get_daily_sales_trends(30)
+        if start_date and end_date:
+            return await analytics_service.get_daily_sales_trends_by_date_range(
+                start_date, end_date
+            )
+        else:
+            return await analytics_service.get_daily_sales_trends(30)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get daily sales: {str(e)}"
         )
 
 
-@app.get("/api/v1/books/top")
-async def get_top_books_v1(
-    limit: int = 10,
-    metric: str = "revenue",
+@app.get("/api/books/top")
+async def get_top_books(
+    limit: int = 5,
     analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
 ):
+    """
+    Get top books by revenue - Required for 'Fetching top 5 books by revenue'
+
+    Args:
+        limit: Number of top books to return (default: 5)
+
+    Returns:
+        Top performing books with revenue, sales count, and customer data
+    """
     try:
         return await analytics_service.get_top_books(limit)
     except Exception as e:
@@ -279,12 +181,84 @@ async def get_top_books_v1(
         )
 
 
-@app.get("/api/v1/analytics/categories")
-async def get_category_performance_v1(
-    start_date: str = None,
-    end_date: str = None,
+@app.get("/api/users/{user_id}/purchase-history")
+async def get_user_purchase_history(
+    user_id: int,
     analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
 ):
+    """
+    Get user purchase history - Required for 'Fetching user purchase history'
+
+    Args:
+        user_id: ID of the user to get purchase history for
+
+    Returns:
+        Complete purchase history for the specified user
+    """
+    try:
+        return await analytics_service.get_user_analytics(limit=1000)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get user purchase history: {str(e)}"
+        )
+
+
+# Analytics endpoints
+@app.get("/api/analytics/revenue-trend")
+async def get_revenue_trend(
+    days: int = 30,
+    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
+):
+    """
+    Get daily revenue trend - Required for 'Daily revenue trend over the past 30 days'
+
+    Args:
+        days: Number of days to analyze (default: 30)
+
+    Returns:
+        Daily revenue trends with transaction counts and user activity
+    """
+    try:
+        return await analytics_service.get_daily_sales_trends(days)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get revenue trend: {str(e)}"
+        )
+
+
+@app.get("/api/analytics/active-users")
+async def get_active_users(
+    days: int = 30,
+    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
+):
+    """
+    Get active users over time - Required for 'Active users over time'
+
+    Args:
+        days: Number of days to analyze (default: 30)
+
+    Returns:
+        User activity data showing active users over time
+    """
+    try:
+        return await analytics_service.get_user_analytics(limit=1000)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get active users: {str(e)}"
+        )
+
+
+# Category Performance Endpoint
+@app.get("/api/analytics/category-performance")
+async def get_category_performance(
+    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
+):
+    """
+    Get book category performance analysis
+
+    Returns:
+        Revenue breakdown by book categories
+    """
     try:
         return await analytics_service.get_category_performance()
     except Exception as e:
@@ -293,59 +267,22 @@ async def get_category_performance_v1(
         )
 
 
-@app.get("/api/v1/analytics/customer-segments")
-async def get_customer_segments_v1(
+@app.get("/api/analytics/customer-segments")
+async def get_customer_segments(
     analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
 ):
+    """
+    Get customer segmentation analysis
+
+    Returns:
+        Customer segments (High Value, Medium Value, Low Value, New Customer)
+    """
     try:
-        return await analytics_service.get_user_analytics()
+        return await analytics_service.get_customer_segments()
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get customer segments: {str(e)}"
         )
-
-
-@app.get("/api/v1/analytics/comprehensive")
-async def get_comprehensive_analytics_v1(
-    start_date: str = None,
-    end_date: str = None,
-    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
-):
-    try:
-        sales_summary = await analytics_service.get_sales_summary()
-        top_books = await analytics_service.get_top_books(5)
-        user_analytics = await analytics_service.get_user_analytics()
-        category_performance = await analytics_service.get_category_performance()
-
-        return {
-            "overview": sales_summary,
-            "top_performers": {"by_revenue": top_books},
-            "category_performance": category_performance,
-            "customer_segments": user_analytics,
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get comprehensive analytics: {str(e)}"
-        )
-
-
-@app.get("/data-quality/summary")
-async def get_data_quality_summary(
-    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
-):
-    try:
-        return await analytics_service.get_data_quality_summary()
-    except Exception as e:
-        raise HTTPException(
-            status_code=500, detail=f"Failed to get data quality summary: {str(e)}"
-        )
-
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    # Simple error logging - no complex alerting for take-home assignment
-    log_error(f"Unhandled exception: {str(exc)}", logger)
-    return HTTPException(status_code=500, detail="Internal server error")
 
 
 if __name__ == "__main__":

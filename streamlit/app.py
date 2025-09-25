@@ -67,42 +67,27 @@ class BookSalesAPI:
         self, start_date: date = None, end_date: date = None, limit: int = 100
     ) -> Dict:
         """Get daily sales data"""
-        if start_date and end_date:
-            # Use the new date range endpoint
-            params = {
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat(),
-            }
-            return self._make_request("/analytics/daily-sales-trends-range", params)
-        else:
-            # Use the original endpoint for backward compatibility
-            params = {
-                "limit": limit,
-                "start_date": start_date.isoformat() if start_date else None,
-                "end_date": end_date.isoformat() if end_date else None,
-            }
-            params = {k: v for k, v in params.items() if v is not None}
-            return self._make_request("/api/v1/sales/daily", params)
-
-    def get_top_books(self, limit: int = 10, metric: str = "revenue") -> Dict:
-        """Get top books"""
-        params = {"limit": limit}
-        return self._make_request("/analytics/top-books", params)
-
-    def get_category_performance(
-        self, start_date: date = None, end_date: date = None
-    ) -> List[Dict]:
-        """Get category performance"""
         params = {
             "start_date": start_date.isoformat() if start_date else None,
             "end_date": end_date.isoformat() if end_date else None,
         }
         params = {k: v for k, v in params.items() if v is not None}
-        return self._make_request("/analytics/category-performance", params)
+        return self._make_request("/api/sales/daily", params)
+
+    def get_top_books(self, limit: int = 10, metric: str = "revenue") -> Dict:
+        """Get top books"""
+        params = {"limit": limit}
+        return self._make_request("/api/books/top", params)
+
+    def get_category_performance(
+        self, start_date: date = None, end_date: date = None
+    ) -> List[Dict]:
+        """Get category performance"""
+        return self._make_request("/api/analytics/category-performance")
 
     def get_customer_segments(self) -> List[Dict]:
         """Get customer segments"""
-        return self._make_request("/analytics/customer-segments")
+        return self._make_request("/api/analytics/customer-segments")
 
     def get_comprehensive_analytics(
         self, start_date: date = None, end_date: date = None
@@ -120,7 +105,9 @@ class BookSalesAPI:
         return self._make_request("/health")
 
 
-def create_revenue_trend_chart(sales_data: List[Dict], start_date: str = None, end_date: str = None) -> go.Figure:
+def create_revenue_trend_chart(
+    sales_data: List[Dict], start_date: str = None, end_date: str = None
+) -> go.Figure:
     """Create daily revenue trend chart"""
     if not sales_data:
         return go.Figure()
@@ -133,7 +120,7 @@ def create_revenue_trend_chart(sales_data: List[Dict], start_date: str = None, e
         df["total_revenue"] = pd.to_numeric(
             df["total_revenue"], errors="coerce"
         ).fillna(0)
-        
+
         # Handle both transaction_count and total_transactions columns
         if "transaction_count" in df.columns:
             df["transaction_count"] = pd.to_numeric(
@@ -192,7 +179,7 @@ def create_revenue_trend_chart(sales_data: List[Dict], start_date: str = None, e
         title_text = f"Daily Revenue Trend ({start_date} to {end_date})"
     else:
         title_text = "Daily Revenue Trend"
-    
+
     # Update layout
     fig.update_layout(
         title={
@@ -280,7 +267,9 @@ def create_top_books_chart(top_books: List[Dict]) -> go.Figure:
     return fig
 
 
-def create_active_users_chart(sales_data: List[Dict], start_date: str = None, end_date: str = None) -> go.Figure:
+def create_active_users_chart(
+    sales_data: List[Dict], start_date: str = None, end_date: str = None
+) -> go.Figure:
     """Create active users over time chart"""
     if not sales_data:
         return go.Figure()
@@ -301,7 +290,7 @@ def create_active_users_chart(sales_data: List[Dict], start_date: str = None, en
             ).fillna(0)
         else:
             df["unique_customers"] = 0
-            
+
         # Handle both transaction_count and total_transactions columns
         if "transaction_count" in df.columns:
             df["transaction_count"] = pd.to_numeric(
@@ -350,7 +339,7 @@ def create_active_users_chart(sales_data: List[Dict], start_date: str = None, en
         title_text = f"Active Users Over Time ({start_date} to {end_date})"
     else:
         title_text = "Active Users Over Time"
-    
+
     fig.update_layout(
         title={
             "text": title_text,
@@ -430,7 +419,7 @@ def create_customer_segments_chart(segments_data: List[Dict]) -> go.Figure:
         df["total_revenue"] = pd.to_numeric(
             df["total_revenue"], errors="coerce"
         ).fillna(0)
-        
+
         # Handle both average_order_value and avg_spent columns
         if "average_order_value" in df.columns:
             df["average_order_value"] = pd.to_numeric(
@@ -541,19 +530,25 @@ def main():
 
         if sales_response and "data" in sales_response:
             sales_data = sales_response["data"]
-            
+
             # Calculate summary metrics from daily data
             if sales_data:
                 df_sales = pd.DataFrame(sales_data)
-                
+
                 # Convert numeric columns
-                df_sales["total_revenue"] = pd.to_numeric(df_sales["total_revenue"], errors="coerce").fillna(0)
-                df_sales["total_transactions"] = pd.to_numeric(df_sales["total_transactions"], errors="coerce").fillna(0)
-                
+                df_sales["total_revenue"] = pd.to_numeric(
+                    df_sales["total_revenue"], errors="coerce"
+                ).fillna(0)
+                df_sales["total_transactions"] = pd.to_numeric(
+                    df_sales["total_transactions"], errors="coerce"
+                ).fillna(0)
+
                 # Calculate summary metrics
                 total_revenue = df_sales["total_revenue"].sum()
                 total_transactions = df_sales["total_transactions"].sum()
-                avg_transaction_value = total_revenue / total_transactions if total_transactions > 0 else 0
+                avg_transaction_value = (
+                    total_revenue / total_transactions if total_transactions > 0 else 0
+                )
                 days_with_sales = len(df_sales[df_sales["total_transactions"] > 0])
             else:
                 total_revenue = 0
@@ -578,9 +573,7 @@ def main():
 
             # Revenue trend chart
             fig_revenue = create_revenue_trend_chart(
-                sales_data, 
-                selected_start.isoformat(), 
-                selected_end.isoformat()
+                sales_data, selected_start.isoformat(), selected_end.isoformat()
             )
             st.plotly_chart(fig_revenue, use_container_width=True)
 
@@ -624,9 +617,7 @@ def main():
 
             # Active users chart
             fig_users = create_active_users_chart(
-                sales_data, 
-                selected_start.isoformat(), 
-                selected_end.isoformat()
+                sales_data, selected_start.isoformat(), selected_end.isoformat()
             )
             st.plotly_chart(fig_users, use_container_width=True)
 
@@ -637,7 +628,7 @@ def main():
                     segments_data = segments_response["data"]
                 else:
                     segments_data = segments_response
-                    
+
                 fig_segments = create_customer_segments_chart(segments_data)
                 st.plotly_chart(fig_segments, use_container_width=True)
 
@@ -686,7 +677,7 @@ def main():
                 category_data = category_response["data"]
             else:
                 category_data = category_response
-                
+
             # Category performance pie chart
             fig_category = create_category_performance_chart(category_data)
             st.plotly_chart(fig_category, use_container_width=True)
