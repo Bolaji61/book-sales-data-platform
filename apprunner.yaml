@@ -2,52 +2,35 @@ version: 1.0
 runtime: python3
 build:
   commands:
-    build:
-      - echo "Installing Python dependencies"
-      - pip3 install -r requirements.txt
-      - echo "DEBUG: Checking Python and pip"
-      - which python || echo "python not found"
-      - which python3 || echo "python3 not found"
-      - python3 --version
-      - which pip || echo "pip not found"
-      - which pip3 || echo "pip3 not found"
-      - pip3 --version
-      - ls -lah /usr/local/bin | grep pip || echo "no pip binaries in /usr/local/bin"
-      - pip3 install --upgrade pip
-      - pip3 install -r requirements.txt
+    - echo "Installing Python dependencies"
+    - pip3 install --upgrade pip
+    - pip3 install -r requirements.txt
+    - echo "DEBUG: Checking Python and pip"
+    - which python || echo "python not found"
+    - which python3 || echo "python3 not found"
+    - python3 --version
+    - which pip || echo "pip not found"
+    - which pip3 || echo "pip3 not found"
+    - pip3 --version
+    - ls -lah /usr/local/bin | grep pip || echo "no pip binaries in /usr/local/bin"
 run:
   runtime-version: 3.11
   command: python3 main.py
   network:
     port: 8000
   env:
-    - name: REDSHIFT_CLUSTER
-      value: ${REDSHIFT_CLUSTER}
-    - name: REDSHIFT_ENDPOINT
-      value: ${REDSHIFT_ENDPOINT}
-    - name: REDSHIFT_PORT
-      value: ${REDSHIFT_PORT}
-    - name: REDSHIFT_DB
-      value: ${REDSHIFT_DB}
-    - name: REDSHIFT_USER
-      value: ${REDSHIFT_USER}
-    - name: REDSHIFT_PASSWORD
-      value: ${REDSHIFT_PASSWORD}
-    - name: REDSHIFT_ROLE_ARN
-      value: ${REDSHIFT_ROLE_ARN}
-    - name: S3_BUCKET_NAME
-      value: ${S3_BUCKET_NAME}
-    - name: S3_PREFIX
-      value: ${S3_PREFIX}
-    - name: DATA_SOURCE_TYPE
-      value: s3
-    - name: DATA_DIR
-      value: data
-    - name: AWS_REGION
-      value: ${AWS_REGION}
-    - name: AWS_ACCESS_KEY_ID
-      value: ${AWS_ACCESS_KEY_ID}
-    - name: AWS_SECRET_ACCESS_KEY
-      value: ${AWS_SECRET_ACCESS_KEY}
-    - name: SNS_TOPIC_ARN
-      value: ${SNS_TOPIC_ARN}
+    REDSHIFT_CLUSTER: ${REDSHIFT_CLUSTER}
+    REDSHIFT_ENDPOINT: ${REDSHIFT_ENDPOINT}
+    REDSHIFT_PORT: ${REDSHIFT_PORT}
+    REDSHIFT_DB: ${REDSHIFT_DB}
+    REDSHIFT_USER: ${REDSHIFT_USER}
+    REDSHIFT_PASSWORD: ${REDSHIFT_PASSWORD}
+    REDSHIFT_ROLE_ARN: ${REDSHIFT_ROLE_ARN}
+    S3_BUCKET_NAME: ${S3_BUCKET_NAME}
+    S3_PREFIX: ${S3_PREFIX}
+    DATA_SOURCE_TYPE: s3
+    DATA_DIR: data
+    AWS_REGION: ${AWS_REGION}
+    AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+    AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    SNS_TOPIC_ARN: ${SNS_TOPIC_ARN}
