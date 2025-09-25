@@ -1,26 +1,43 @@
 version: 1.0
-runtime: docker
+runtime: python3
 build:
   commands:
     build:
-      - echo "Building Book Sales Platform"
-      - docker build -t book-sales-api .
-      - docker build -t streamlit-dashboard ./streamlit
+      - echo "Installing Python dependencies"
+      - pip install -r requirements.txt
 run:
-  runtime-version: latest
-  command: docker-compose up
+  runtime-version: 3.11
+  command: python main.py
   network:
     port: 8000
   env:
-    - name: DB_HOST
+    - name: REDSHIFT_CLUSTER
+      value: ${REDSHIFT_CLUSTER}
+    - name: REDSHIFT_ENDPOINT
       value: ${REDSHIFT_ENDPOINT}
-    - name: DB_PORT
+    - name: REDSHIFT_PORT
       value: ${REDSHIFT_PORT}
-    - name: DB_NAME
+    - name: REDSHIFT_DB
       value: ${REDSHIFT_DB}
-    - name: DB_USER
+    - name: REDSHIFT_USER
       value: ${REDSHIFT_USER}
-    - name: DB_PASSWORD
+    - name: REDSHIFT_PASSWORD
       value: ${REDSHIFT_PASSWORD}
+    - name: REDSHIFT_ROLE_ARN
+      value: ${REDSHIFT_ROLE_ARN}
+    - name: S3_BUCKET_NAME
+      value: ${S3_BUCKET_NAME}
+    - name: S3_PREFIX
+      value: ${S3_PREFIX}
+    - name: DATA_SOURCE_TYPE
+      value: s3
+    - name: DATA_DIR
+      value: data
     - name: AWS_REGION
       value: ${AWS_REGION}
+    - name: AWS_ACCESS_KEY_ID
+      value: ${AWS_ACCESS_KEY_ID}
+    - name: AWS_SECRET_ACCESS_KEY
+      value: ${AWS_SECRET_ACCESS_KEY}
+    - name: SNS_TOPIC_ARN
+      value: ${SNS_TOPIC_ARN}
