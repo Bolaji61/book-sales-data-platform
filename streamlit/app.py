@@ -67,18 +67,27 @@ class BookSalesAPI:
         self, start_date: date = None, end_date: date = None, limit: int = 100
     ) -> Dict:
         """Get daily sales data"""
-        params = {
-            "limit": limit,
-            "start_date": start_date.isoformat() if start_date else None,
-            "end_date": end_date.isoformat() if end_date else None,
-        }
-        params = {k: v for k, v in params.items() if v is not None}
-        return self._make_request("/api/v1/sales/daily", params)
+        if start_date and end_date:
+            # Use the new date range endpoint
+            params = {
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            }
+            return self._make_request("/analytics/daily-sales-trends-range", params)
+        else:
+            # Use the original endpoint for backward compatibility
+            params = {
+                "limit": limit,
+                "start_date": start_date.isoformat() if start_date else None,
+                "end_date": end_date.isoformat() if end_date else None,
+            }
+            params = {k: v for k, v in params.items() if v is not None}
+            return self._make_request("/api/v1/sales/daily", params)
 
     def get_top_books(self, limit: int = 10, metric: str = "revenue") -> Dict:
         """Get top books"""
-        params = {"limit": limit, "metric": metric}
-        return self._make_request("/api/v1/books/top", params)
+        params = {"limit": limit}
+        return self._make_request("/analytics/top-books", params)
 
     def get_category_performance(
         self, start_date: date = None, end_date: date = None
@@ -89,11 +98,11 @@ class BookSalesAPI:
             "end_date": end_date.isoformat() if end_date else None,
         }
         params = {k: v for k, v in params.items() if v is not None}
-        return self._make_request("/api/v1/analytics/categories", params)
+        return self._make_request("/analytics/category-performance", params)
 
     def get_customer_segments(self) -> List[Dict]:
         """Get customer segments"""
-        return self._make_request("/api/v1/analytics/customer-segments")
+        return self._make_request("/analytics/customer-segments")
 
     def get_comprehensive_analytics(
         self, start_date: date = None, end_date: date = None
@@ -111,7 +120,7 @@ class BookSalesAPI:
         return self._make_request("/health")
 
 
-def create_revenue_trend_chart(sales_data: List[Dict]) -> go.Figure:
+def create_revenue_trend_chart(sales_data: List[Dict], start_date: str = None, end_date: str = None) -> go.Figure:
     """Create daily revenue trend chart"""
     if not sales_data:
         return go.Figure()
@@ -124,9 +133,18 @@ def create_revenue_trend_chart(sales_data: List[Dict]) -> go.Figure:
         df["total_revenue"] = pd.to_numeric(
             df["total_revenue"], errors="coerce"
         ).fillna(0)
-        df["transaction_count"] = pd.to_numeric(
-            df["transaction_count"], errors="coerce"
-        ).fillna(0)
+        
+        # Handle both transaction_count and total_transactions columns
+        if "transaction_count" in df.columns:
+            df["transaction_count"] = pd.to_numeric(
+                df["transaction_count"], errors="coerce"
+            ).fillna(0)
+        elif "total_transactions" in df.columns:
+            df["transaction_count"] = pd.to_numeric(
+                df["total_transactions"], errors="coerce"
+            ).fillna(0)
+        else:
+            df["transaction_count"] = 0
         # Handle both unique_customers and total_customers columns
         if "unique_customers" in df.columns:
             df["unique_customers"] = pd.to_numeric(
@@ -169,10 +187,16 @@ def create_revenue_trend_chart(sales_data: List[Dict]) -> go.Figure:
     )
     fig.add_trace(fig2)
 
+    # Create dynamic title based on date range
+    if start_date and end_date:
+        title_text = f"Daily Revenue Trend ({start_date} to {end_date})"
+    else:
+        title_text = "Daily Revenue Trend"
+    
     # Update layout
     fig.update_layout(
         title={
-            "text": "Daily Revenue Trend (Last 30 Days)",
+            "text": title_text,
             "x": 0.5,
             "xanchor": "center",
             "font": {"size": 20},
@@ -256,7 +280,7 @@ def create_top_books_chart(top_books: List[Dict]) -> go.Figure:
     return fig
 
 
-def create_active_users_chart(sales_data: List[Dict]) -> go.Figure:
+def create_active_users_chart(sales_data: List[Dict], start_date: str = None, end_date: str = None) -> go.Figure:
     """Create active users over time chart"""
     if not sales_data:
         return go.Figure()
@@ -277,9 +301,18 @@ def create_active_users_chart(sales_data: List[Dict]) -> go.Figure:
             ).fillna(0)
         else:
             df["unique_customers"] = 0
-        df["transaction_count"] = pd.to_numeric(
-            df["transaction_count"], errors="coerce"
-        ).fillna(0)
+            
+        # Handle both transaction_count and total_transactions columns
+        if "transaction_count" in df.columns:
+            df["transaction_count"] = pd.to_numeric(
+                df["transaction_count"], errors="coerce"
+            ).fillna(0)
+        elif "total_transactions" in df.columns:
+            df["transaction_count"] = pd.to_numeric(
+                df["total_transactions"], errors="coerce"
+            ).fillna(0)
+        else:
+            df["transaction_count"] = 0
     except Exception as e:
         st.error(f"Error processing user analytics data: {e}")
         return go.Figure()
@@ -312,9 +345,15 @@ def create_active_users_chart(sales_data: List[Dict]) -> go.Figure:
         )
     )
 
+    # Create dynamic title based on date range
+    if start_date and end_date:
+        title_text = f"Active Users Over Time ({start_date} to {end_date})"
+    else:
+        title_text = "Active Users Over Time"
+    
     fig.update_layout(
         title={
-            "text": "Active Users Over Time",
+            "text": title_text,
             "x": 0.5,
             "xanchor": "center",
             "font": {"size": 20},
@@ -391,9 +430,18 @@ def create_customer_segments_chart(segments_data: List[Dict]) -> go.Figure:
         df["total_revenue"] = pd.to_numeric(
             df["total_revenue"], errors="coerce"
         ).fillna(0)
-        df["average_order_value"] = pd.to_numeric(
-            df["average_order_value"], errors="coerce"
-        ).fillna(0)
+        
+        # Handle both average_order_value and avg_spent columns
+        if "average_order_value" in df.columns:
+            df["average_order_value"] = pd.to_numeric(
+                df["average_order_value"], errors="coerce"
+            ).fillna(0)
+        elif "avg_spent" in df.columns:
+            df["average_order_value"] = pd.to_numeric(
+                df["avg_spent"], errors="coerce"
+            ).fillna(0)
+        else:
+            df["average_order_value"] = 0
     except Exception as e:
         st.error(f"Error processing customer segments data: {e}")
         return go.Figure()
@@ -493,41 +541,47 @@ def main():
 
         if sales_response and "data" in sales_response:
             sales_data = sales_response["data"]
-            summary = sales_response.get("summary", {})
+            
+            # Calculate summary metrics from daily data
+            if sales_data:
+                df_sales = pd.DataFrame(sales_data)
+                
+                # Convert numeric columns
+                df_sales["total_revenue"] = pd.to_numeric(df_sales["total_revenue"], errors="coerce").fillna(0)
+                df_sales["total_transactions"] = pd.to_numeric(df_sales["total_transactions"], errors="coerce").fillna(0)
+                
+                # Calculate summary metrics
+                total_revenue = df_sales["total_revenue"].sum()
+                total_transactions = df_sales["total_transactions"].sum()
+                avg_transaction_value = total_revenue / total_transactions if total_transactions > 0 else 0
+                days_with_sales = len(df_sales[df_sales["total_transactions"] > 0])
+            else:
+                total_revenue = 0
+                total_transactions = 0
+                avg_transaction_value = 0
+                days_with_sales = 0
 
             # Key metrics
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                total_revenue = summary.get("total_revenue") or 0
-                # Convert to float if it's a string
-                if isinstance(total_revenue, str):
-                    total_revenue = float(total_revenue)
                 st.metric("Total Revenue", f"${total_revenue:,.2f}", delta=None)
             with col2:
-                total_transactions = summary.get("total_transactions") or 0
-                # Convert to int if it's a string
-                if isinstance(total_transactions, str):
-                    total_transactions = int(float(total_transactions))
                 st.metric("Total Transactions", f"{total_transactions:,}", delta=None)
             with col3:
-                avg_transaction_value = summary.get("avg_transaction_value") or 0
-                # Convert to float if it's a string
-                if isinstance(avg_transaction_value, str):
-                    avg_transaction_value = float(avg_transaction_value)
                 st.metric(
                     "Avg Transaction Value",
                     f"${avg_transaction_value:,.2f}",
                     delta=None,
                 )
             with col4:
-                days_with_sales = summary.get("days_with_sales") or 0
-                # Convert to int if it's a string
-                if isinstance(days_with_sales, str):
-                    days_with_sales = int(float(days_with_sales))
                 st.metric("Days with Sales", f"{days_with_sales}", delta=None)
 
             # Revenue trend chart
-            fig_revenue = create_revenue_trend_chart(sales_data)
+            fig_revenue = create_revenue_trend_chart(
+                sales_data, 
+                selected_start.isoformat(), 
+                selected_end.isoformat()
+            )
             st.plotly_chart(fig_revenue, use_container_width=True)
 
             # Data table
@@ -569,12 +623,22 @@ def main():
             sales_data = sales_response["data"]
 
             # Active users chart
-            fig_users = create_active_users_chart(sales_data)
+            fig_users = create_active_users_chart(
+                sales_data, 
+                selected_start.isoformat(), 
+                selected_end.isoformat()
+            )
             st.plotly_chart(fig_users, use_container_width=True)
 
             # Customer segments
             if segments_response:
-                fig_segments = create_customer_segments_chart(segments_response)
+                # Extract data from response if it's wrapped in a data field
+                if isinstance(segments_response, dict) and "data" in segments_response:
+                    segments_data = segments_response["data"]
+                else:
+                    segments_data = segments_response
+                    
+                fig_segments = create_customer_segments_chart(segments_data)
                 st.plotly_chart(fig_segments, use_container_width=True)
 
             # User analytics summary
@@ -617,12 +681,18 @@ def main():
             )
 
         if category_response:
+            # Extract data from response if it's wrapped in a data field
+            if isinstance(category_response, dict) and "data" in category_response:
+                category_data = category_response["data"]
+            else:
+                category_data = category_response
+                
             # Category performance pie chart
-            fig_category = create_category_performance_chart(category_response)
+            fig_category = create_category_performance_chart(category_data)
             st.plotly_chart(fig_category, use_container_width=True)
 
             # Category performance table
-            df_category = pd.DataFrame(category_response)
+            df_category = pd.DataFrame(category_data)
             st.dataframe(df_category, use_container_width=True)
         else:
             st.error("Failed to load category data")

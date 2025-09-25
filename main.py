@@ -111,9 +111,10 @@ async def health_check():
     try:
         redshift_status = "healthy"
         try:
-            redshift_mgr = await get_redshift()
-            result = await redshift_mgr.execute_query("SELECT 1")
-            if not result:
+            # Use analytics service for health check
+            analytics_service = await get_analytics_service()
+            result = await analytics_service._execute_query("SELECT 1 as test", "health_check")
+            if not result or not result.get("data"):
                 redshift_status = "unhealthy: No data returned"
         except Exception as e:
             redshift_status = f"unhealthy: {str(e)}"
@@ -173,6 +174,34 @@ async def get_user_analytics(
         )
 
 
+@app.get("/debug/data-status")
+async def debug_data_status(
+    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
+):
+    """Debug endpoint to check data status in Redshift tables"""
+    try:
+        return await analytics_service.debug_data_status()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get debug data: {str(e)}"
+        )
+
+
+@app.get("/analytics/daily-sales-trends-range")
+async def get_daily_sales_trends_by_range(
+    start_date: str,
+    end_date: str,
+    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
+):
+    """Get daily sales trends for a specific date range (format: YYYY-MM-DD)"""
+    try:
+        return await analytics_service.get_daily_sales_trends_by_date_range(start_date, end_date)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get daily sales trends: {str(e)}"
+        )
+
+
 @app.get("/analytics/category-performance")
 async def get_category_performance(
     analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
@@ -182,6 +211,18 @@ async def get_category_performance(
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get category performance: {str(e)}"
+        )
+
+
+@app.get("/analytics/customer-segments")
+async def get_customer_segments(
+    analytics_service: RedshiftAnalyticsService = Depends(get_analytics_service),
+):
+    try:
+        return await analytics_service.get_customer_segments()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get customer segments: {str(e)}"
         )
 
 

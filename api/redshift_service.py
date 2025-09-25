@@ -36,7 +36,36 @@ class RedshiftAnalyticsService:
         self.redshift_client = boto3.client("redshift-data", region_name=self.region)
 
     async def get_daily_sales_trends(self, days: int = 30) -> Dict[str, Any]:
-        """Get daily sales trends for the last N days"""
+        """Get daily sales trends for the last N days of actual data"""
+        query = f"""
+        WITH latest_sales_date AS (
+            SELECT MAX(d.full_date) as max_date
+            FROM fact_sales f
+            JOIN dim_date d ON f.date_id = d.date_id
+        )
+        SELECT 
+            d.full_date as date,
+            d.year,
+            d.month,
+            d.day_name,
+            COUNT(f.transaction_id) as total_transactions,
+            SUM(f.amount) as total_revenue,
+            AVG(f.amount) as avg_transaction_value,
+            COUNT(DISTINCT f.user_id) as unique_customers,
+            SUM(f.quantity) as total_books_sold
+        FROM fact_sales f
+        JOIN dim_date d ON f.date_id = d.date_id
+        CROSS JOIN latest_sales_date lsd
+        WHERE d.full_date >= lsd.max_date - INTERVAL '{days} days'
+        AND d.full_date <= lsd.max_date
+        GROUP BY d.full_date, d.year, d.month, d.day_name
+        ORDER BY d.full_date DESC
+        """
+
+        return await self._execute_query(query, "daily_sales_trends")
+
+    async def get_daily_sales_trends_by_date_range(self, start_date: str, end_date: str) -> Dict[str, Any]:
+        """Get daily sales trends for a specific date range"""
         query = f"""
         SELECT 
             d.full_date as date,
@@ -48,30 +77,33 @@ class RedshiftAnalyticsService:
             AVG(f.amount) as avg_transaction_value,
             COUNT(DISTINCT f.user_id) as unique_customers,
             SUM(f.quantity) as total_books_sold
-        FROM dim_date d
-        LEFT JOIN fact_sales f ON d.date_id = f.date_id
-        WHERE d.full_date >= CURRENT_DATE - INTERVAL '{days} days'
+        FROM fact_sales f
+        JOIN dim_date d ON f.date_id = d.date_id
+        WHERE d.full_date >= '{start_date}'
+        AND d.full_date <= '{end_date}'
         GROUP BY d.full_date, d.year, d.month, d.day_name
         ORDER BY d.full_date DESC
         """
 
-        return await self._execute_query(query, "daily_sales_trends")
+        return await self._execute_query(query, "daily_sales_trends_by_range")
 
     async def get_top_books(self, limit: int = 10) -> Dict[str, Any]:
         """Get top performing books by revenue"""
         query = f"""
         SELECT 
-            book_id,
-            title,
-            author,
-            category,
-            total_sales,
-            total_revenue,
-            avg_price,
-            unique_customers,
-            first_sale_date,
-            last_sale_date
-        FROM mv_top_books
+            b.book_id,
+            b.title,
+            b.author,
+            b.category,
+            COUNT(f.transaction_id) as total_sales,
+            SUM(f.amount) as total_revenue,
+            AVG(f.amount) as avg_price,
+            COUNT(DISTINCT f.user_id) as unique_customers,
+            MIN(f.transaction_timestamp) as first_sale_date,
+            MAX(f.transaction_timestamp) as last_sale_date
+        FROM fact_sales f
+        JOIN dim_books b ON f.book_id = b.book_id
+        GROUP BY b.book_id, b.title, b.author, b.category
         ORDER BY total_revenue DESC
         LIMIT {limit}
         """
@@ -82,18 +114,20 @@ class RedshiftAnalyticsService:
         """Get user analytics and customer segments"""
         query = f"""
         SELECT 
-            user_id,
-            name,
-            location,
-            signup_date,
-            total_purchases,
-            total_spent,
-            avg_purchase_value,
-            first_purchase_date,
-            last_purchase_date,
-            customer_lifespan_days
-        FROM mv_user_analytics
-        WHERE total_spent > 0
+            u.user_id,
+            u.name,
+            u.location,
+            u.signup_date,
+            COUNT(f.transaction_id) as total_purchases,
+            SUM(f.amount) as total_spent,
+            AVG(f.amount) as avg_purchase_value,
+            MIN(f.transaction_timestamp) as first_purchase_date,
+            MAX(f.transaction_timestamp) as last_purchase_date,
+            DATEDIFF(day, MIN(f.transaction_timestamp), MAX(f.transaction_timestamp)) as customer_lifespan_days
+        FROM dim_users u
+        JOIN fact_sales f ON u.user_id = f.user_id
+        GROUP BY u.user_id, u.name, u.location, u.signup_date
+        HAVING SUM(f.amount) > 0
         ORDER BY total_spent DESC
         LIMIT {limit}
         """
@@ -161,7 +195,16 @@ class RedshiftAnalyticsService:
     async def get_customer_segments(self) -> Dict[str, Any]:
         """Get customer segmentation analysis"""
         query = """
-        WITH customer_segments AS (
+        WITH user_totals AS (
+            SELECT 
+                u.user_id,
+                SUM(f.amount) as total_spent,
+                COUNT(f.transaction_id) as total_purchases
+            FROM dim_users u
+            JOIN fact_sales f ON u.user_id = f.user_id
+            GROUP BY u.user_id
+        ),
+        customer_segments AS (
             SELECT 
                 CASE 
                     WHEN total_spent >= 1000 THEN 'High Value'
@@ -173,7 +216,7 @@ class RedshiftAnalyticsService:
                 SUM(total_spent) as total_revenue,
                 AVG(total_spent) as avg_spent,
                 AVG(total_purchases) as avg_purchases
-            FROM mv_user_analytics
+            FROM user_totals
             GROUP BY 
                 CASE 
                     WHEN total_spent >= 1000 THEN 'High Value'
@@ -272,3 +315,43 @@ class RedshiftAnalyticsService:
         except Exception as e:
             logger.error(f"Failed to execute {query_type} query: {e}")
             raise
+
+    async def debug_data_status(self) -> Dict[str, Any]:
+        """Debug method to check data status in tables"""
+        queries = {
+            "fact_sales_count": "SELECT COUNT(*) as count FROM fact_sales",
+            "dim_date_count": "SELECT COUNT(*) as count FROM dim_date",
+            "dim_books_count": "SELECT COUNT(*) as count FROM dim_books",
+            "dim_users_count": "SELECT COUNT(*) as count FROM dim_users",
+            "fact_sales_date_range": """
+                SELECT 
+                    MIN(d.full_date) as earliest_date,
+                    MAX(d.full_date) as latest_date,
+                    COUNT(DISTINCT d.full_date) as unique_dates
+                FROM fact_sales f
+                JOIN dim_date d ON f.date_id = d.date_id
+            """,
+            "current_date": "SELECT CURRENT_DATE as current_date",
+            "recent_sales": """
+                SELECT 
+                    d.full_date,
+                    COUNT(f.transaction_id) as transactions,
+                    SUM(f.amount) as revenue
+                FROM fact_sales f
+                JOIN dim_date d ON f.date_id = d.date_id
+                WHERE d.full_date >= CURRENT_DATE - INTERVAL '30 days'
+                GROUP BY d.full_date
+                ORDER BY d.full_date DESC
+                LIMIT 10
+            """
+        }
+        
+        results = {}
+        for name, query in queries.items():
+            try:
+                result = await self._execute_query(query, name)
+                results[name] = result
+            except Exception as e:
+                results[name] = {"error": str(e)}
+        
+        return results
