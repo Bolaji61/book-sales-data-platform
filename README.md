@@ -1,8 +1,8 @@
-# Book Sales Analytics Platform
+# Book Sales Data Platform
 
-A simple analytics dashboard for book sales data. Shows daily revenue trends, top-selling books, and customer insights.
+A simple data platform and analytics dashboard for book sales data. Shows daily revenue trends, top-selling books, and customer insights.
 
-## What This Project Does
+## Project Summary
 
 - Loads book sales data into Amazon Redshift
 - Provides a REST API for analytics queries
@@ -67,7 +67,7 @@ A simple analytics dashboard for book sales data. Shows daily revenue trends, to
 
 - Python 3.9 or newer
 - AWS account with S3 and Redshift access
-- Docker (optional, but easier)
+- Docker
 
 ## Data Files
 
@@ -118,45 +118,3 @@ The Streamlit dashboard shows:
 └── requirements.txt      # Python packages
 ```
 
-## Environment Variables
-
-Copy `env.example` to `.env` and fill in:
-
-- `AWS_ACCESS_KEY_ID` - Your AWS access key
-- `AWS_SECRET_ACCESS_KEY` - Your AWS secret key
-- `AWS_REGION` - AWS region (e.g., us-east-1)
-- `REDSHIFT_CLUSTER_ID` - Your Redshift cluster name
-- `REDSHIFT_DATABASE` - Database name
-- `REDSHIFT_USER` - Database username
-- `REDSHIFT_PASSWORD` - Database password
-- `S3_BUCKET` - S3 bucket for data files
-
-## Troubleshooting
-
-**Dashboard shows "unhealthy" status:**
-- Check your `.env` file has correct credentials
-- Make sure Redshift cluster is running
-- Verify S3 bucket exists and is accessible
-
-**Empty charts or "no data" errors:**
-- Run the ETL process to load data into Redshift
-- Check that CSV files exist in the `data/` folder
-- Verify data was uploaded to S3 successfully
-
-**API endpoints return errors:**
-- Check Redshift connection in the logs
-- Ensure all required environment variables are set
-- Verify the database tables were created properly
-
-## Development
-
-## Project Structure
-
-**Adding new endpoints:** 
-1. Add the method to `api/redshift_service.py`
-2. Add the route to `main.py`
-3. Update the dashboard in `streamlit/app.py` if needed
-
-**Modifying the dashboard:**
-- Edit `streamlit/app.py`
-- The dashboard will reload automatically with Docker
